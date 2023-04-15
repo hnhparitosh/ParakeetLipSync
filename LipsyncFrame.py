@@ -54,6 +54,7 @@ class LipsyncFame(QMainWindow):
 
         # creating a thread pool
         self.thread_pool = QThreadPool()
+        print("Multithreading with maximum %d threads" % self.thread_pool.maxThreadCount())
 
     def load_audio(self):
         # method to load a file
@@ -75,8 +76,8 @@ class LipsyncFame(QMainWindow):
 
         print("worker created")
 
-        # Connect the "finished" signal to the slot that updates the text editor
-        worker.finished.connect(lambda result: self.text_editor.append(result))
+        # Connect the "finished" signal to the slot that updates the text area
+        worker.signals.result.connect(lambda result: self.text_area.append(result))
 
         print("signal connected")
         # Start the AudioProcessor instance in the thread pool
