@@ -38,19 +38,25 @@ class LipsyncFame(QMainWindow):
         
         central_widget.setLayout(layout)
 
-
-
         self.menuBar = self.menuBar()
 
-        
         # defining actions
         open_action = QAction('Open file', self)
         open_action.setShortcut('Ctrl+O')
         open_action.triggered.connect(self.load_audio)
 
+        save_action = QAction('Save file', self)
+        save_action.setShortcut('Ctrl+S')
+        save_action.triggered.connect(self.save_output)
+
+        export_moho = QAction('Export Moho Timesheet')
+        export_moho.triggered.connect(self.export_moho)
+
         # adding menus
         fileMenu = self.menuBar.addMenu('File')
         fileMenu.addAction(open_action)
+        fileMenu.addAction(save_action)
+        fileMenu.addAction(export_moho)
 
         # creating a thread pool
         self.thread_pool = QThreadPool()
@@ -77,14 +83,22 @@ class LipsyncFame(QMainWindow):
         print("worker created")
 
         # Connect the "finished" signal to the slot that updates the text area
-        worker.signals.result.connect(lambda result: self.text_area.append(result))
+        worker.signals.result.connect(lambda result: self.text_area.setText(result))
 
         print("signal connected")
         # Start the AudioProcessor instance in the thread pool
         # QThreadPool.globalInstance().start(processor)
         self.thread_pool.start(worker)
         print("thread started")
-        # Audio processing code here
-        # For example, just print some text in the text area
         # self.text_area.append("Audio processing completed.")
     
+    def save_output(self):
+        file_name, _ = QFileDialog.getSaveFileName(self, "Save File", "", "Text Files (*.txt);;Data Files (*.dat)")
+
+        if file_name:
+        # Open the selected file in write mode and write the contents of the text editor to the file
+            with open(file_name, "w", encoding='utf-8') as f:
+                f.write(self.text_area.toPlainText())
+
+    def export_moho(self):
+        pass
