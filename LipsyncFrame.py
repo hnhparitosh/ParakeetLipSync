@@ -49,7 +49,7 @@ class LipsyncFame(QMainWindow):
         save_action.setShortcut('Ctrl+S')
         save_action.triggered.connect(self.save_output)
 
-        export_moho = QAction('Export Moho Timesheet')
+        export_moho = QAction('Export Moho Timesheet',self)
         export_moho.triggered.connect(self.export_moho)
 
         # adding menus
@@ -66,7 +66,7 @@ class LipsyncFame(QMainWindow):
         # method to load a file
         file_dialog = QFileDialog(self)
         file_dialog.setNameFilter("Audio Files (*.mp3 *.wav)")
-        file_dialog.setDefaultSuffix("mp3")
+        file_dialog.setDefaultSuffix("wav")
         file_dialog.setFileMode(QFileDialog.ExistingFile)
 
         if file_dialog.exec_() == QFileDialog.Accepted:
@@ -87,13 +87,12 @@ class LipsyncFame(QMainWindow):
 
         print("signal connected")
         # Start the AudioProcessor instance in the thread pool
-        # QThreadPool.globalInstance().start(processor)
         self.thread_pool.start(worker)
         print("thread started")
         # self.text_area.append("Audio processing completed.")
     
     def save_output(self):
-        file_name, _ = QFileDialog.getSaveFileName(self, "Save File", "", "Text Files (*.txt);;Data Files (*.dat)")
+        file_name, _ = QFileDialog.getSaveFileName(self, "Save File", "", "Text Files (*.txt)")
 
         if file_name:
         # Open the selected file in write mode and write the contents of the text editor to the file
@@ -101,4 +100,9 @@ class LipsyncFame(QMainWindow):
                 f.write(self.text_area.toPlainText())
 
     def export_moho(self):
-        pass
+        file_name, _ = QFileDialog.getSaveFileName(self, "Save Moho Timesheet", "", "Data Files (*.dat)")
+
+        if file_name:
+        # Open the selected file in write mode and write the contents of the text editor to the file
+            with open(file_name, "w", encoding='utf-8') as f:
+                f.write(self.text_area.toPlainText())
