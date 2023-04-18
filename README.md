@@ -10,5 +10,7 @@ This project is under development. Don't be suprised if it crashes, burns, eats 
 
 - [x] A very minimalistic GUI.
 - [ ] Automatic lip-sync.
+- [ ] Support for exporting Moho Timesheet (.dat).
+- [ ] Support for exporting Toei Digital Exposure Sheet (.xdts).
 - [ ] A MouthView to view the generated output.
 - [ ] A WaveformView to edit the generated output.

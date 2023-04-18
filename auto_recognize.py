@@ -1,5 +1,6 @@
 from allosaurus.app import read_recognizer
-from PySide6.QtCore import Qt, QThreadPool, QRunnable, QObject, Slot, Signal
+from PySide6.QtCore import QRunnable, QObject, Slot, Signal
+import json
 
 class AutoRecognize(QRunnable):
     
@@ -13,14 +14,26 @@ class AutoRecognize(QRunnable):
         print("AutoRecognize object created\n")
         self.signals = WorkerSignals()
     
+    def ipa_to_preston_blair(self, input):
+        with open("ipa_preston_blair.json", encoding="utf8") as f:
+            ipa_preston_map = json.load(f)
+        
+        new_words = []
+        for line in input.split('\n'):
+            if line:
+                start_time, duration, ipa = line.split()
+                preston_blair = ipa_preston_map.get(ipa, "rest")
+                new_words.append(f"{start_time} {duration} {preston_blair}")
+                
+        return "\n".join(new_words)
+    
     @Slot()
     def run(self):
         # Run the audio processing code in a separate thread
         model = read_recognizer()
-        output = model.recognize(self.file_name, timestamp=True)
+        ipa_output = model.recognize(self.file_name, timestamp=True)
         # Emit the "result" signal with the output
+        output = self.ipa_to_preston_blair(ipa_output)
         print("about to emit the output")
         self.signals.result.emit(output)
     
-    def convert_to_CMU(input):
-        pass

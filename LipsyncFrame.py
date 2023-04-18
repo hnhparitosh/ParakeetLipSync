@@ -105,8 +105,8 @@ class LipsyncFame(QMainWindow):
         framerate = 24
         for line in data.split('\n'):
             if line:
-                time, duration, mouth = line.split()
-                start_frame = int(float(time) * framerate) + 1
+                start_time, duration, mouth = line.split()
+                start_frame = int(float(start_time) * framerate) + 1
                 end_frame = start_frame + int(float(duration) * framerate)
                 frames.extend([f'{i} {mouth}' for i in range(start_frame, end_frame)])
         
