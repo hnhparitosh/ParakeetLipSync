@@ -100,9 +100,19 @@ class LipsyncFame(QMainWindow):
                 f.write(self.text_area.toPlainText())
 
     def export_moho(self):
-        file_name, _ = QFileDialog.getSaveFileName(self, "Save Moho Timesheet", "", "Data Files (*.dat)")
+        frames = []
+        data = self.text_area.toPlainText()
+        framerate = 24
+        for line in data.split('\n'):
+            if line:
+                time, duration, mouth = line.split()
+                start_frame = int(float(time) * framerate) + 1
+                end_frame = start_frame + int(float(duration) * framerate)
+                frames.extend([f'{i} {mouth}' for i in range(start_frame, end_frame)])
+        
+        output = 'MohoSwitch1\n' + '\n'.join(frames)
 
+        file_name, _ = QFileDialog.getSaveFileName(self, "Save Moho Timesheet", "", "Data Files (*.dat)")
         if file_name:
-        # Open the selected file in write mode and write the contents of the text editor to the file
             with open(file_name, "w", encoding='utf-8') as f:
-                f.write(self.text_area.toPlainText())
+                f.write(output)

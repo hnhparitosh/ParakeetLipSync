@@ -21,3 +21,6 @@ class AutoRecognize(QRunnable):
         # Emit the "result" signal with the output
         print("about to emit the output")
         self.signals.result.emit(output)
+    
+    def convert_to_CMU(input):
+        pass
