@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QMainWindow, QLabel, QFileDialog, QTextEdit, QWidget, QVBoxLayout, QPushButton
+from PySide6.QtWidgets import QMainWindow, QLabel, QFileDialog, QTextEdit, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QSpinBox
 from PySide6.QtGui import QAction
 from PySide6.QtCore import Qt, QThreadPool, Slot
 # from PySide6.QtCore import Qt
@@ -15,7 +15,7 @@ class LipsyncFame(QMainWindow):
         self.setWindowTitle("Parakeet Lipsync")
         self.resize(500, 500)
         # self.setGeometry(100, 100, 300, 200)
-
+        self.frame_rate = 24
 
         # defining widgets
         self.label = QLabel(self)
@@ -29,9 +29,21 @@ class LipsyncFame(QMainWindow):
         self.process_button.clicked.connect(self.process_audio)
         self.process_button.setEnabled(False)
 
+        # Add a spin box widget to set the frame rate
+        self.fps_label = QLabel("FPS:", self)
+        self.spin_box = QSpinBox(self)
+        self.spin_box.setRange(24, 60)
+        self.spin_box.setValue(self.frame_rate)
+        self.spin_box.valueChanged.connect(lambda val: setattr(self,'frame_rate', val))
+
+        fps_sublayout = QHBoxLayout()
+        fps_sublayout.addWidget(self.fps_label)
+        fps_sublayout.addWidget(self.spin_box)
+
         central_widget = QWidget(self)
         self.setCentralWidget(central_widget)
         layout = QVBoxLayout()
+        layout.addLayout(fps_sublayout)
         layout.addWidget(self.label)
         layout.addWidget(self.process_button)
         layout.addWidget(self.text_area)
@@ -102,7 +114,7 @@ class LipsyncFame(QMainWindow):
     def export_moho(self):
         frames = []
         data = self.text_area.toPlainText()
-        framerate = 24
+        framerate = self.frame_rate
         for line in data.split('\n'):
             if line:
                 start_time, duration, mouth = line.split()
