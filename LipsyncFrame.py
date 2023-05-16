@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt, QThreadPool, Slot
 # from PySide6.QtCore import Qt
 
 # from WaveformView import WaveformView
-# from MouthView import MouthView
+from MouthView import MouthView
 # from DialogueView import DialogueView
 from auto_recognize import AutoRecognize
 import sys
@@ -18,8 +18,8 @@ class LipsyncFame(QMainWindow):
         self.frame_rate = 24
 
         # defining widgets
-        self.label = QLabel(self)
-        self.label.setText("Please load an audio file. (Ctrl+O)")
+        self.fileName_label = QLabel(self)
+        self.fileName_label.setText("Please load an audio file. (Ctrl+O)")
 
         self.text_area = QTextEdit(self)
         self.text_area.setReadOnly(True)
@@ -36,6 +36,17 @@ class LipsyncFame(QMainWindow):
         self.spin_box.setValue(self.frame_rate)
         self.spin_box.valueChanged.connect(lambda val: setattr(self,'frame_rate', val))
 
+        # sound controls and mouthView
+        self.play_button = QPushButton("Play", self)
+        self.play_button.clicked.connect(self.play_audio)
+        self.play_button.setEnabled(False)
+
+        self.pause_button = QPushButton("Pause", self)
+        self.pause_button.clicked.connect(self.pause_audio)
+        self.pause_button.setEnabled(False)
+
+        self.mouth_view = MouthView()
+
         fps_sublayout = QHBoxLayout()
         fps_sublayout.addWidget(self.fps_label)
         fps_sublayout.addWidget(self.spin_box)
@@ -44,9 +55,12 @@ class LipsyncFame(QMainWindow):
         self.setCentralWidget(central_widget)
         layout = QVBoxLayout()
         layout.addLayout(fps_sublayout)
-        layout.addWidget(self.label)
+        layout.addWidget(self.fileName_label)
         layout.addWidget(self.process_button)
         layout.addWidget(self.text_area)
+        layout.addWidget(self.mouth_view)
+        layout.addWidget(self.play_button)
+        layout.addWidget(self.pause_button)
         
         central_widget.setLayout(layout)
 
@@ -83,7 +97,7 @@ class LipsyncFame(QMainWindow):
 
         if file_dialog.exec_() == QFileDialog.Accepted:
             self.file_name = file_dialog.selectedFiles()[0]
-            self.label.setText(f"Loaded: {self.file_name}")
+            self.fileName_label.setText(f"Loaded: {self.file_name}")
             self.process_button.setEnabled(True) 
     
     def process_audio(self):

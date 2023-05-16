@@ -1,82 +1,168 @@
 import os
-from PySide6 import QtCore, QtGui, QtWidgets
+import librosa
+from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem
+from PySide6.QtGui import QPixmap, QImage, QPainter
 
-class MouthView(QtWidgets.QLabel):
-    def __init__(self, parent=None):
-        super(MouthView, self).__init__(parent)
+
+class MouthView(QGraphicsView):
+    def __init__(self, fileName, parent=None):
+        super().__init__(parent)
+
         self.mouth_images = {}
-        self.current_mouth = None
-        self.setAlignment(QtCore.Qt.AlignCenter)
+        
+        self.fileName = fileName
 
-    def load_mouth_images(self, directory_path):
-        if os.path.isdir(directory_path):
-            for filename in os.listdir(directory_path):
-                if filename.endswith(".jpg"):
-                    mouth_image_path = os.path.join(directory_path, filename)
-                    mouth_image = QtGui.QPixmap(mouth_image_path)
-                    self.mouth_images[filename[:-4]] = mouth_image
+        self.audioFile = None
+        self.audio_stream = None
+        self.current_time = 0
+        self.current_phoneme = None
+        self.startTime = 0
+        self.endTime = 0
 
-    def set_current_mouth(self, mouth):
-        if mouth != self.current_mouth:
-            self.current_mouth = mouth
-            if mouth in self.mouth_images:
-                self.setPixmap(self.mouth_images[mouth])
-            else:
-                self.clear()
+        self.scene = QGraphicsScene()
+        self.setScene(self.scene)
+        # self.setFixedSize(100, 100)
+        
+        self.mouth_images = {}
+        self.load_mouth_images()
+    
+    def set_audio_file(self, filename):
+        self.audio_file = filename
+        self.audio_stream = librosa.load(filename)
 
-class MainWindow(QtWidgets.QWidget):
-    def __init__(self):
-        super(MainWindow, self).__init__()
+    def play(self):
+        if self.audio_file is None:
+            return
 
-        self.audio_processing_result = QtWidgets.QTextEdit()
-        self.play_button = QtWidgets.QPushButton("Play")
-        self.stop_button = QtWidgets.QPushButton("Stop")
-        self.fps_label = QtWidgets.QLabel("FPS:")
-        self.fps_spinbox = QtWidgets.QSpinBox()
-        self.fps_spinbox.setRange(1, 60)
-        self.fps_spinbox.setValue(24)
-        self.mouth_view = MouthView()
+        self.audio_stream.play()
+        self.update()
 
-        layout = QtWidgets.QVBoxLayout()
-        layout.addWidget(self.audio_processing_result)
-        layout.addWidget(self.play_button)
-        layout.addWidget(self.stop_button)
+    def paintEvent(self, event):
+        super().paintEvent(event)
 
-        fps_layout = QtWidgets.QHBoxLayout()
-        fps_layout.addWidget(self.fps_label)
-        fps_layout.addWidget(self.fps_spinbox)
-        layout.addLayout(fps_layout)
+        self.mouth_image = self.mouth_images[self.current_phoneme]
 
-        layout.addWidget(self.mouth_view)
+        painter = QPainter(self)
+        painter.drawImage(event.rect(), self.mouth_image)
+    
+    def load_mouth_images(self):
+        mouth_images_dir = os.path.join(os.path.dirname(__file__), 'mouthImages')
+        for filename in os.listdir(mouth_images_dir):
+            if filename.endswith('.jpg'):
+                mouth_name = os.path.splitext(filename)[0]
+                mouth_path = os.path.join(mouth_images_dir, filename)
+                self.mouth_images[mouth_name] = QPixmap(mouth_path)
+    
+    def update_mouth(self, time, duration, mouth_shape):
+        if mouth_shape in self.mouth_images:
+            self.scene.clear()
+            mouth_pixmap = self.mouth_images[mouth_shape]
+            mouth_item = QGraphicsPixmapItem(mouth_pixmap)
+            self.scene.addItem(mouth_item)
+            
+            # Position the mouth item based on the time and duration
+            mouth_width = mouth_pixmap.width()
+            mouth_height = mouth_pixmap.height()
+            mouth_item.setPos(self.width() * time / self.parent().audio_duration - mouth_width / 2, self.height() / 2 - mouth_height / 2)
 
-        self.setLayout(layout)
+# class MouthView(QWidget):
+#     def __init__(self):
+#         super().__init__()
 
-        self.play_button.clicked.connect(self.play_audio)
-        self.stop_button.clicked.connect(self.stop_audio)
+#         self.play_button = QPushButton("Play Audio")
+#         self.play_button.clicked.connect(self.play_audio)
 
-    def play_audio(self):
-        # TODO: add code to play audio and get phoneme information
-        # In the following example, we just set some dummy values
-        phoneme_info = [
-            ('0.01', '0.045', 'FV'),
-            ('0.046', '0.05', 'EY'),
-            ('0.051', '0.049', 'OW'),
-            ('0.1', '0.04', 'P')
-        ]
-        for info in phoneme_info:
-            time, duration, mouth = info
-            self.mouth_view.set_current_mouth(mouth)
-            QtCore.QCoreApplication.processEvents()  # update the GUI
-            QtWidgets.QApplication.processEvents()  # update the GUI
-            QtCore.QThread.msleep(int(1000 / self.fps_spinbox.value()))  # sleep for the specified fps
+#         self.stop_button = QPushButton("Stop Audio")
+#         self.stop_button.setDisabled(True)
+#         self.stop_button.clicked.connect(self.stop_audio)
 
-    def stop_audio(self):
-        # TODO: add code to stop audio playback
-        pass
+#         self.mouth_label = QLabel()
+#         self.mouth_label.setAlignment(Qt.AlignCenter)
+#         self.movie = QMovie()
+#         self.mouth_label.setMovie(self.movie)
 
-if __name__ == "__main__":
-    app = QtWidgets.QApplication([])
-    window = MainWindow()
-    window.mouth_view.load_mouth_images("mouthImages")
-    window.show()
-    app.exec_()
+#         layout = QVBoxLayout()
+#         layout.addWidget(self.play_button)
+#         layout.addWidget(self.stop_button)
+#         layout.addWidget(self.mouth_label)
+#         self.setLayout(layout)
+
+#         self.media_player = QMediaPlayer(self)
+#         # self.media_player.stateChanged.connect(self.handle_state_changed)
+#         # self.media_player.mediaStatusChanged.connect(self.handle_media_status_changed)
+
+#     def update_image(self, filename):
+#         mouth_shape = filename.split("/")[-1].split(".")[0]
+#         image_path = os.path.join("mouthImages", f"{mouth_shape}.jpg")
+#         self.movie.stop()
+#         self.movie.setFileName(image_path)
+#         self.movie.start()
+
+#     def handle_state_changed(self, state):
+#         if state == QMediaPlayer.StoppedState:
+#             self.stop_button.setDisabled(True)
+#             self.play_button.setDisabled(False)
+
+#     def handle_media_status_changed(self, status):
+#         if status == QMediaPlayer.EndOfMedia:
+#             self.media_player.stop()
+#             self.stop_button.setDisabled(True)
+#             self.play_button.setDisabled(False)
+
+#     def play_audio(self):
+#         filename = self.parent().fileName_label.text()
+#         url = QUrl.fromLocalFile(filename)
+#         # content = QMediaContent(url)
+#         self.media_player.setMedia(url)
+#         self.media_player.play()
+#         self.play_button.setDisabled(True)
+#         self.stop_button.setDisabled(False)
+
+#     def stop_audio(self):
+#         self.media_player.stop()
+#         self.stop_button.setDisabled(True)
+#         self.play_button.setDisabled(False)
+
+
+
+# class MouthView(QWidget):
+#     def __init__(self):
+#         super().__init__()
+
+#         self.mouth_label = QLabel()
+
+#         layout = QVBoxLayout()
+#         layout.addWidget(self.mouth_label)
+#         self.setLayout(layout)
+
+#         self.mouthImages = {}
+#         for shape in ['AI', 'E', 'etc', 'FV', 'L', 'MBP', 'O', 'rest', 'U', 'WQ']:
+#             self.mouthImages[shape] = QPixmap(f'mouthImages/{shape}.png')
+#         self.timer = QTimer()
+#         self.timer.timeout.connect(self.update_mouth)
+
+#     def play(self, text_area, file_label):
+#         self.text_area = text_area
+#         self.file_label = file_label
+#         self.processing_result = []
+#         for line in self.text_area.toPlainText().split('\n'):
+#             if line.strip():
+#                 time, duration, shape = line.split()
+#                 self.processing_result.append((float(time), float(duration), shape))
+#         self.processing_index = 0
+#         self.player = QMediaPlayer()
+#         self.player.setMedia(QUrl.fromLocalFile(self.file_label.text()))
+#         self.player.play()
+#         self.timer.start(10)
+
+#     def update_mouth(self):
+#         if self.processing_index >= len(self.processing_result):
+#             self.timer.stop()
+#             return
+#         current_time = self.player.position() / 1000.0
+#         start_time, duration, shape = self.processing_result[self.processing_index]
+#         end_time = start_time + duration
+#         if current_time >= start_time and current_time < end_time:
+#             self.mouth_label.setPixmap(self.mouthImages[shape])
+#         elif current_time >= end_time:
+#             self.processing_index += 1
