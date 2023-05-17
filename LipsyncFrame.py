@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import QMainWindow, QLabel, QFileDialog, QTextEdit, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QSpinBox
 from PySide6.QtGui import QAction
-from PySide6.QtCore import Qt, QThreadPool, Slot
-# from PySide6.QtCore import Qt
+from PySide6.QtCore import QThreadPool
+from audio_player import AudioPlayer
 
 # from WaveformView import WaveformView
 from MouthView import MouthView
@@ -9,7 +9,7 @@ from MouthView import MouthView
 from auto_recognize import AutoRecognize
 import sys
 
-class LipsyncFame(QMainWindow):
+class LipsyncFrame(QMainWindow):
     def __init__(self) :
         super().__init__()
         self.setWindowTitle("Parakeet Lipsync")
@@ -37,15 +37,17 @@ class LipsyncFame(QMainWindow):
         self.spin_box.valueChanged.connect(lambda val: setattr(self,'frame_rate', val))
 
         # sound controls and mouthView
+        self.audio_player = AudioPlayer()
+
         self.play_button = QPushButton("Play", self)
-        self.play_button.clicked.connect(self.play_audio)
         self.play_button.setEnabled(False)
+        self.play_button.clicked.connect(self.play_audio)
 
         self.pause_button = QPushButton("Pause", self)
-        self.pause_button.clicked.connect(self.pause_audio)
         self.pause_button.setEnabled(False)
-
-        self.mouth_view = MouthView()
+        self.pause_button.clicked.connect(self.pause_audio)
+        
+        # self.mouth_view = MouthView()
 
         fps_sublayout = QHBoxLayout()
         fps_sublayout.addWidget(self.fps_label)
@@ -58,7 +60,7 @@ class LipsyncFame(QMainWindow):
         layout.addWidget(self.fileName_label)
         layout.addWidget(self.process_button)
         layout.addWidget(self.text_area)
-        layout.addWidget(self.mouth_view)
+        # layout.addWidget(self.mouth_view)
         layout.addWidget(self.play_button)
         layout.addWidget(self.pause_button)
         
@@ -97,21 +99,25 @@ class LipsyncFame(QMainWindow):
 
         if file_dialog.exec_() == QFileDialog.Accepted:
             self.file_name = file_dialog.selectedFiles()[0]
+
+            # loading the file in audio player
+            self.audio_player.load_audio(self.file_name)
             self.fileName_label.setText(f"Loaded: {self.file_name}")
-            self.process_button.setEnabled(True) 
+
+            self.process_button.setEnabled(True)
+            self.play_button.setEnabled(True)
+            self.pause_button.setEnabled(True) 
     
     def process_audio(self):
         # Disable the button while processing the audio
         self.process_button.setEnabled(False)
 
         worker = AutoRecognize(self.file_name)
-
-        print("worker created")
+        print("auto recognition worker created")
 
         # Connect the "finished" signal to the slot that updates the text area
         worker.signals.result.connect(lambda result: self.text_area.setText(result))
 
-        print("signal connected")
         # Start the AudioProcessor instance in the thread pool
         self.thread_pool.start(worker)
         print("thread started")
@@ -142,3 +148,9 @@ class LipsyncFame(QMainWindow):
         if file_name:
             with open(file_name, "w", encoding='utf-8') as f:
                 f.write(output)
+    
+    def play_audio(self):
+        self.audio_player.play_audio()
+    
+    def pause_audio(self):
+        self.audio_player.pause_audio()

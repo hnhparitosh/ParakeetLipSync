@@ -1,10 +1,10 @@
 import sys
 from PySide6.QtWidgets import QApplication
-from LipsyncFrame import LipsyncFame
+from LipsyncFrame import LipsyncFrame
 
 app = QApplication(sys.argv)
 
-window = LipsyncFame()
+window = LipsyncFrame()
 window.show()
 
 # start the event loop
