@@ -3,9 +3,7 @@ from PySide6.QtGui import QAction
 from PySide6.QtCore import QThreadPool
 from audio_player import AudioPlayer
 
-# from WaveformView import WaveformView
 from MouthView import MouthView
-# from DialogueView import DialogueView
 from auto_recognize import AutoRecognize
 import sys
 
