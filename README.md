@@ -15,7 +15,7 @@ A video tutorial on how to use Parakeet Lip sync is coming soon.
 - [x] A minimalistic GUI.
 - [x] Automatic lip-sync.
 - [x] Support for exporting Moho Timesheet (.dat).
-- [x] Common keyboard shortcuts `ctrl + o`, `ctrl + s`, etc.
+- [x] Common keyboard shortcuts `ctrl + o`, `ctrl + s`, etc. (Wow!)
 - [ ] Support for exporting Toei Digital Exposure Sheet (.xdts).
 - [ ] A MouthView to view the generated output.
 - [ ] A WaveformView to edit the generated output.
