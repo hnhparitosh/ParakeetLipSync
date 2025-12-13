@@ -1,0 +1,26 @@
+[project]
+name = "parakeet-lipsync"
+version = "0.1.0"
+description = "A lip-syncing application using phoneme recognition"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "dearpygui>=2.0.0",
+    "librosa>=0.10.0",
+    "sounddevice>=0.5.0",
+    "numpy>=1.24.0",
+    "allosaurus>=1.0.2",
+]
+
+[project.scripts]
+parakeet = "parakeet_lipsync.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/parakeet_lipsync"]
+
+[tool.uv]
+dev-dependencies = []
