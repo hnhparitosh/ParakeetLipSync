@@ -27,6 +27,10 @@ class ParakeetApp:
         self.cursor_position: float = 0.0
         self._play_to_target: Optional[float] = None  # Target for "play to cursor"
 
+        # Zoom state
+        self._zoom_level: int = 1  # 1 = fit all, 2 = 2x zoom, 4 = 4x zoom, etc.
+        self._view_start: float = 0.0  # Start of visible range in seconds
+
         # Parsed lipsync data for mouth shape display
         self._lipsync_entries: list[tuple[float, float, str]] = []  # (start, duration, shape)
 
@@ -145,6 +149,9 @@ class ParakeetApp:
             dpg.add_key_press_handler(dpg.mvKey_O, callback=self._shortcut_open)
             dpg.add_key_press_handler(dpg.mvKey_S, callback=self._shortcut_save)
             dpg.add_key_press_handler(dpg.mvKey_Spacebar, callback=self._shortcut_play_pause)
+            dpg.add_key_press_handler(dpg.mvKey_Add, callback=self._shortcut_zoom_in)
+            dpg.add_key_press_handler(dpg.mvKey_Subtract, callback=self._shortcut_zoom_out)
+            dpg.add_key_press_handler(dpg.mvKey_0, callback=self._shortcut_zoom_fit)
 
         # Main window
         with dpg.window(tag="main_window"):
@@ -197,10 +204,17 @@ class ParakeetApp:
                     width=-1,
                     no_menus=True,
                     no_box_select=True,
-                    no_mouse_pos=True
             ):
-                dpg.add_plot_axis(dpg.mvXAxis, label="Time (s)", tag="waveform_x_axis")
-                dpg.add_plot_axis(dpg.mvYAxis, label="", tag="waveform_y_axis", no_tick_labels=True)
+                # X axis
+                dpg.add_plot_axis(dpg.mvXAxis, label="Time (s)", tag="waveform_x_axis", no_tick_marks=False)
+
+                # Y axis - locked
+                dpg.add_plot_axis(
+                    dpg.mvYAxis, label="", tag="waveform_y_axis",
+                    no_tick_labels=True,
+                    lock_min=True,
+                    lock_max=True
+                )
                 dpg.set_axis_limits("waveform_y_axis", -1.1, 1.1)
 
                 # Placeholder waveform
@@ -216,10 +230,33 @@ class ParakeetApp:
                     tag=self.cursor_line_tag
                 )
 
-            # Set up plot click handler
+            # Set up plot click handler for seeking (left click)
             with dpg.item_handler_registry(tag="plot_handler"):
-                dpg.add_item_clicked_handler(callback=self._on_waveform_click)
+                dpg.add_item_clicked_handler(button=dpg.mvMouseButton_Left, callback=self._on_waveform_click)
             dpg.bind_item_handler_registry(self.waveform_plot_tag, "plot_handler")
+
+            # Horizontal scroll slider (for panning when zoomed)
+            dpg.add_slider_float(
+                tag="waveform_scroll",
+                default_value=0,
+                min_value=0,
+                max_value=1,
+                width=-1,
+                callback=self._on_scroll_changed,
+                format="",
+                enabled=False
+            )
+
+            # Zoom controls
+            with dpg.group(horizontal=True):
+                dpg.add_button(label="-", callback=self._on_zoom_out, width=30)
+                dpg.add_text("Zoom:", color=(150, 150, 150))
+                dpg.add_text("1x", tag="zoom_level_text")
+                dpg.add_button(label="+", callback=self._on_zoom_in, width=30)
+                dpg.add_spacer(width=10)
+                dpg.add_button(label="Fit All (0)", callback=self._on_zoom_fit, width=80)
+                dpg.add_spacer(width=20)
+                dpg.add_text("Keys: +/- zoom, 0 fit  |  Click to seek  |  Drag slider to scroll", color=(120, 120, 120))
 
             dpg.add_spacer(height=10)
 
@@ -327,6 +364,13 @@ class ParakeetApp:
             self._set_mouth_shape_image("rest")
             dpg.set_value("mouth_shape_name", "rest")
             dpg.set_value("mouth_shape_time", "Not processed")
+
+            # Reset zoom
+            self._zoom_level = 1
+            self._view_start = 0.0
+            dpg.set_value("zoom_level_text", "1x")
+            dpg.configure_item("waveform_scroll", enabled=False)
+            dpg.set_value("waveform_scroll", 0)
 
             # Update file label
             filename = os.path.basename(file_path)
@@ -460,6 +504,92 @@ class ParakeetApp:
         self.audio_player.play_from(self.cursor_position)
         dpg.configure_item(self.play_btn_tag, label="Pause")
 
+    def _on_zoom_in(self):
+        """Zoom in on the waveform (show less time, more detail)."""
+        if self.audio_player.duration <= 0:
+            return
+
+        # Max zoom: 16x
+        if self._zoom_level >= 16:
+            return
+
+        self._zoom_level *= 2
+        self._update_zoom_view()
+
+    def _on_zoom_out(self):
+        """Zoom out on the waveform (show more time, less detail)."""
+        if self.audio_player.duration <= 0:
+            return
+
+        # Min zoom: 1x (fit all)
+        if self._zoom_level <= 1:
+            return
+
+        self._zoom_level //= 2
+        self._update_zoom_view()
+
+    def _on_zoom_fit(self):
+        """Fit the entire waveform in view."""
+        if self.audio_player.duration <= 0:
+            return
+
+        self._zoom_level = 1
+        self._view_start = 0.0
+        self._update_zoom_view()
+
+    def _on_scroll_changed(self, sender, app_data):
+        """Handle scroll slider change."""
+        if self.audio_player.duration <= 0 or self._zoom_level <= 1:
+            return
+
+        # Calculate view start based on scroll position
+        view_duration = self.audio_player.duration / self._zoom_level
+        max_start = self.audio_player.duration - view_duration
+        self._view_start = app_data * max_start
+
+        self._apply_zoom_limits()
+
+    def _update_zoom_view(self):
+        """Update the view based on current zoom level and scroll position."""
+        if self.audio_player.duration <= 0:
+            return
+
+        duration = self.audio_player.duration
+        view_duration = duration / self._zoom_level
+
+        # Update zoom level text
+        dpg.set_value("zoom_level_text", f"{self._zoom_level}x")
+
+        # Enable/disable scroll slider based on zoom
+        if self._zoom_level > 1:
+            dpg.configure_item("waveform_scroll", enabled=True)
+            # Update slider max based on zoom level
+            max_start = duration - view_duration
+            if max_start > 0:
+                scroll_pos = self._view_start / max_start
+                scroll_pos = max(0, min(1, scroll_pos))
+                dpg.set_value("waveform_scroll", scroll_pos)
+        else:
+            dpg.configure_item("waveform_scroll", enabled=False)
+            dpg.set_value("waveform_scroll", 0)
+            self._view_start = 0.0
+
+        # Clamp view_start
+        max_start = max(0, duration - view_duration)
+        self._view_start = max(0, min(self._view_start, max_start))
+
+        self._apply_zoom_limits()
+
+    def _apply_zoom_limits(self):
+        """Apply the current zoom limits to the plot axis."""
+        if self.audio_player.duration <= 0:
+            return
+
+        view_duration = self.audio_player.duration / self._zoom_level
+        view_end = self._view_start + view_duration
+
+        dpg.set_axis_limits("waveform_x_axis", self._view_start, view_end)
+
     def _on_fps_changed(self, sender, app_data):
         """Handle FPS change."""
         self.fps = app_data
@@ -529,6 +659,21 @@ class ParakeetApp:
         """Handle Space shortcut for play/pause."""
         if self.current_file:
             self._on_play_pause()
+
+    def _shortcut_zoom_in(self, sender, app_data):
+        """Handle + shortcut for zoom in."""
+        if self.current_file:
+            self._on_zoom_in()
+
+    def _shortcut_zoom_out(self, sender, app_data):
+        """Handle - shortcut for zoom out."""
+        if self.current_file:
+            self._on_zoom_out()
+
+    def _shortcut_zoom_fit(self, sender, app_data):
+        """Handle 0 shortcut for fit all."""
+        if self.current_file:
+            self._on_zoom_fit()
 
     def _parse_lipsync_data(self, data: str) -> None:
         """Parse lipsync data string into list of entries."""
