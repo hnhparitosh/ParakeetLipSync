@@ -1,8 +1,11 @@
 import os
+from pathlib import Path
 from typing import Optional
 
 import dearpygui.dearpygui as dpg
 import numpy as np
+from PIL import Image
+
 from parakeet_lipsync.audio_player import AudioPlayer
 from parakeet_lipsync.recognizer import PhonemeRecognizer, export_moho_timesheet
 
@@ -27,6 +30,10 @@ class ParakeetApp:
         # Parsed lipsync data for mouth shape display
         self._lipsync_entries: list[tuple[float, float, str]] = []  # (start, duration, shape)
 
+        # Mouth shape textures
+        self._mouth_textures: dict[str, int] = {}
+        self._mouth_shapes_dir = Path(__file__).parent.parent.parent / "resources" / "mouthShapes"
+
         # UI element tags
         self.file_label_tag = "file_label"
         self.waveform_plot_tag = "waveform_plot"
@@ -44,6 +51,7 @@ class ParakeetApp:
     def run(self):
         """Run the application."""
         dpg.create_context()
+        self._load_mouth_textures()
         self._setup_ui()
         self._setup_theme()
 
@@ -53,6 +61,37 @@ class ParakeetApp:
         dpg.set_primary_window("main_window", True)
         dpg.start_dearpygui()
         dpg.destroy_context()
+
+    def _load_mouth_textures(self):
+        """Load mouth shape images as textures."""
+        mouth_shapes = ["AI", "E", "FV", "L", "MBP", "O", "U", "WQ", "etc", "rest", "N"]
+
+        with dpg.texture_registry(show=False):
+            for shape in mouth_shapes:
+                image_path = self._mouth_shapes_dir / f"{shape}.jpg"
+                if image_path.exists():
+                    # Load image with PIL
+                    img = Image.open(image_path).convert("RGBA")
+                    width, height = img.size
+
+                    # Convert to flat list of floats (0-1 range)
+                    img_data = np.array(img).astype(np.float32) / 255.0
+                    img_data = img_data.flatten().tolist()
+
+                    # Create texture
+                    texture_id = dpg.add_static_texture(
+                        width=width,
+                        height=height,
+                        default_value=img_data,
+                        tag=f"texture_{shape}"
+                    )
+                    self._mouth_textures[shape] = texture_id
+
+        # Use 'rest' as fallback for missing shapes
+        if "rest" in self._mouth_textures:
+            for shape in mouth_shapes:
+                if shape not in self._mouth_textures:
+                    self._mouth_textures[shape] = self._mouth_textures["rest"]
 
     def _setup_theme(self):
         """Set up application theme."""
@@ -248,16 +287,21 @@ class ParakeetApp:
                 with dpg.child_window(width=-1, height=-1, border=True, tag="mouth_shape_panel"):
                     dpg.add_text("Mouth Shape", color=(150, 150, 150))
                     dpg.add_separator()
-                    dpg.add_spacer(height=30)
-                    # Large mouth shape text
-                    with dpg.group(horizontal=True):
-                        dpg.add_spacer(width=40)
-                        dpg.add_text(
-                            "",
-                            tag="mouth_shape_display",
-                            color=(100, 200, 255)
+                    dpg.add_spacer(height=10)
+                    # Mouth shape image
+                    if "rest" in self._mouth_textures:
+                        dpg.add_image(
+                            self._mouth_textures["rest"],
+                            tag="mouth_shape_image",
+                            width=150,
+                            height=150
                         )
-                    dpg.add_spacer(height=15)
+                    dpg.add_spacer(height=5)
+                    dpg.add_text(
+                        "rest",
+                        tag="mouth_shape_name",
+                        color=(100, 200, 255)
+                    )
                     dpg.add_text(
                         "Not processed",
                         tag="mouth_shape_time",
@@ -280,7 +324,8 @@ class ParakeetApp:
             # Clear previous lipsync data
             self.lipsync_data = ""
             self._lipsync_entries = []
-            dpg.set_value("mouth_shape_display", "")
+            self._set_mouth_shape_image("rest")
+            dpg.set_value("mouth_shape_name", "rest")
             dpg.set_value("mouth_shape_time", "Not processed")
 
             # Update file label
@@ -514,18 +559,34 @@ class ParakeetApp:
     def _update_mouth_shape_display(self, position: float) -> None:
         """Update the mouth shape display widget."""
         if not self._lipsync_entries:
-            dpg.set_value("mouth_shape_display", "")
+            self._set_mouth_shape_image("rest")
+            dpg.set_value("mouth_shape_name", "rest")
             dpg.set_value("mouth_shape_time", "Not processed")
             return
 
         result = self._get_mouth_shape_at(position)
         if result:
             shape, start_time, end_time = result
-            dpg.set_value("mouth_shape_display", shape)
+            self._set_mouth_shape_image(shape)
+            dpg.set_value("mouth_shape_name", shape)
             dpg.set_value("mouth_shape_time", f"{start_time:.2f}s - {end_time:.2f}s")
         else:
-            dpg.set_value("mouth_shape_display", "rest")
+            self._set_mouth_shape_image("rest")
+            dpg.set_value("mouth_shape_name", "rest")
             dpg.set_value("mouth_shape_time", "")
+
+    def _set_mouth_shape_image(self, shape: str) -> None:
+        """Set the mouth shape image to the given shape."""
+        if shape in self._mouth_textures:
+            texture_id = self._mouth_textures[shape]
+        elif "rest" in self._mouth_textures:
+            texture_id = self._mouth_textures["rest"]
+        else:
+            return
+
+        # Update the image texture
+        if dpg.does_item_exist("mouth_shape_image"):
+            dpg.configure_item("mouth_shape_image", texture_tag=texture_id)
 
     def _show_about(self):
         """Show about dialog."""
