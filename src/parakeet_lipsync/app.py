@@ -22,6 +22,7 @@ class ParakeetApp:
         self.waveform_x: list = []
         self.waveform_y: list = []
         self.cursor_position: float = 0.0
+        self._play_to_target: Optional[float] = None  # Target for "play to cursor"
 
         # UI element tags
         self.file_label_tag = "file_label"
@@ -323,9 +324,9 @@ class ParakeetApp:
         """Update cursor position on waveform."""
         dpg.set_value(self.cursor_line_tag, [[self.cursor_position], []])
 
-    def _update_time_display(self):
+    def _update_time_display(self, position: Optional[float] = None):
         """Update time display label."""
-        current = self.cursor_position
+        current = position if position is not None else self.cursor_position
         total = self.audio_player.duration
 
         current_str = f"{int(current // 60)}:{current % 60:05.2f}"
@@ -334,18 +335,26 @@ class ParakeetApp:
 
     def _on_position_update(self, position: float):
         """Handle position update from audio player."""
-        self.cursor_position = position
-        self._update_cursor()
-        self._update_time_display()
+        # Don't update cursor when in "play to" mode - show target instead
+        if self._play_to_target is None:
+            self.cursor_position = position
+            self._update_cursor()
+        self._update_time_display(position)
 
     def _on_playback_finished(self):
         """Handle playback finished."""
+        # If we were in "play to" mode, move cursor to the target position
+        if self._play_to_target is not None:
+            self.cursor_position = self._play_to_target
+            self._update_cursor()
+            self._play_to_target = None
         dpg.configure_item(self.play_btn_tag, label="Play")
 
     def _on_play_pause(self):
         """Toggle playback."""
         if self.audio_player.is_playing:
             self.audio_player.pause()
+            self._play_to_target = None
             dpg.configure_item(self.play_btn_tag, label="Play")
         else:
             self.audio_player.play()
@@ -356,6 +365,7 @@ class ParakeetApp:
         self.audio_player.stop()
         self.audio_player.current_position = 0
         self.cursor_position = 0.0
+        self._play_to_target = None
         self._update_cursor()
         self._update_time_display()
         dpg.configure_item(self.play_btn_tag, label="Play")
@@ -363,11 +373,13 @@ class ParakeetApp:
     def _on_play_to_cursor(self):
         """Play from start to cursor position."""
         if self.cursor_position > 0:
+            self._play_to_target = self.cursor_position  # Remember target
             self.audio_player.play_to(self.cursor_position)
             dpg.configure_item(self.play_btn_tag, label="Pause")
 
     def _on_play_from_cursor(self):
         """Play from cursor position to end."""
+        self._play_to_target = None  # Clear any "play to" target
         self.audio_player.play_from(self.cursor_position)
         dpg.configure_item(self.play_btn_tag, label="Pause")
 
@@ -421,14 +433,18 @@ class ParakeetApp:
             except Exception as e:
                 print(f"Error exporting file: {e}")
 
+    def _is_ctrl_down(self) -> bool:
+        """Check if either Ctrl key is pressed."""
+        return dpg.is_key_down(dpg.mvKey_LControl) or dpg.is_key_down(dpg.mvKey_RControl)
+
     def _shortcut_open(self, sender, app_data):
         """Handle Ctrl+O shortcut."""
-        if dpg.is_key_down(dpg.mvKey_Control):
+        if self._is_ctrl_down():
             dpg.show_item("file_dialog")
 
     def _shortcut_save(self, sender, app_data):
         """Handle Ctrl+S shortcut."""
-        if dpg.is_key_down(dpg.mvKey_Control) and self.lipsync_data:
+        if self._is_ctrl_down() and self.lipsync_data:
             dpg.show_item("save_text_dialog")
 
     def _shortcut_play_pause(self, sender, app_data):

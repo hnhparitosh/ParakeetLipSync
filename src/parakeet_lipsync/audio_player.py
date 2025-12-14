@@ -66,7 +66,8 @@ class AudioPlayer:
         if self.samples is None or self.sample_rate is None:
             return
 
-        self.stop()
+        # Stop any current playback without clearing end_sample
+        self._stop_playback()
 
         start = self.current_position
         end = self._play_end_sample if self._play_end_sample else len(self.samples)
@@ -85,9 +86,9 @@ class AudioPlayer:
     def play_from(self, position_seconds: float) -> None:
         """Play from specified position to the end."""
         if self.samples is not None and self.sample_rate is not None:
+            self._play_end_sample = None  # Play to end
             self.current_position = int(position_seconds * self.sample_rate)
             self.current_position = max(0, min(self.current_position, len(self.samples)))
-            self._play_end_sample = None
             self.play()
 
     def play_to(self, position_seconds: float) -> None:
@@ -102,15 +103,17 @@ class AudioPlayer:
         """Pause audio playback, maintaining position."""
         if self.is_playing:
             self._update_current_position()
-            sd.stop()
-            self.is_playing = False
-            self._stop_position_updates()
+            self._stop_playback()
 
     def stop(self) -> None:
-        """Stop audio playback."""
+        """Stop audio playback and reset end position."""
+        self._stop_playback()
+        self._play_end_sample = None
+
+    def _stop_playback(self) -> None:
+        """Stop audio playback without clearing end position."""
         sd.stop()
         self.is_playing = False
-        self._play_end_sample = None
         self._stop_position_updates()
 
     def toggle(self) -> None:
@@ -140,7 +143,8 @@ class AudioPlayer:
         if self.current_position >= end_sample:
             self.current_position = end_sample
             self.is_playing = False
-            self._stop_position_updates()
+            # Don't call _stop_position_updates here - let the loop exit naturally
+            # and call the finished callback
             if self._on_playback_finished:
                 self._on_playback_finished()
 
@@ -161,5 +165,7 @@ class AudioPlayer:
     def _stop_position_updates(self) -> None:
         """Stop the position update thread."""
         self._stop_update_thread = True
-        if self._update_thread and self._update_thread.is_alive():
+        # Don't join if called from within the thread itself
+        current_thread = threading.current_thread()
+        if self._update_thread and self._update_thread.is_alive() and self._update_thread != current_thread:
             self._update_thread.join(timeout=0.2)
