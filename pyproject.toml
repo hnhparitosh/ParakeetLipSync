@@ -23,4 +23,4 @@ build-backend = "hatchling.build"
 packages = ["src/parakeet_lipsync"]
 
 [tool.uv]
-dependency-groups.dev = []
+dev-dependencies = []

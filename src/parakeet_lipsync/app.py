@@ -24,6 +24,9 @@ class ParakeetApp:
         self.cursor_position: float = 0.0
         self._play_to_target: Optional[float] = None  # Target for "play to cursor"
 
+        # Parsed lipsync data for mouth shape display
+        self._lipsync_entries: list[tuple[float, float, str]] = []  # (start, duration, shape)
+
         # UI element tags
         self.file_label_tag = "file_label"
         self.waveform_plot_tag = "waveform_plot"
@@ -44,7 +47,7 @@ class ParakeetApp:
         self._setup_ui()
         self._setup_theme()
 
-        dpg.create_viewport(title="Parakeet Lipsync", width=900, height=700)
+        dpg.create_viewport(title="Parakeet Lipsync", width=1000, height=700)
         dpg.setup_dearpygui()
         dpg.show_viewport()
         dpg.set_primary_window("main_window", True)
@@ -228,16 +231,38 @@ class ParakeetApp:
 
             dpg.add_spacer(height=10)
 
-            # Output text area
+            # Output section: text area on left, mouth shape on right
             dpg.add_text("Output:")
-            dpg.add_input_text(
-                tag=self.output_text_tag,
-                multiline=True,
-                readonly=True,
-                width=-1,
-                height=-1,
-                default_value="Load an audio file and click 'Process Audio' to generate lipsync data."
-            )
+            with dpg.group(horizontal=True):
+                # Text area (takes most of the width)
+                dpg.add_input_text(
+                    tag=self.output_text_tag,
+                    multiline=True,
+                    readonly=True,
+                    width=-200,
+                    height=-1,
+                    default_value="Load an audio file and click 'Process Audio' to generate lipsync data."
+                )
+
+                # Mouth shape display panel
+                with dpg.child_window(width=-1, height=-1, border=True, tag="mouth_shape_panel"):
+                    dpg.add_text("Mouth Shape", color=(150, 150, 150))
+                    dpg.add_separator()
+                    dpg.add_spacer(height=30)
+                    # Large mouth shape text
+                    with dpg.group(horizontal=True):
+                        dpg.add_spacer(width=40)
+                        dpg.add_text(
+                            "",
+                            tag="mouth_shape_display",
+                            color=(100, 200, 255)
+                        )
+                    dpg.add_spacer(height=15)
+                    dpg.add_text(
+                        "Not processed",
+                        tag="mouth_shape_time",
+                        color=(150, 150, 150)
+                    )
 
     def _on_file_selected(self, sender, app_data):
         """Handle file selection."""
@@ -251,6 +276,12 @@ class ParakeetApp:
             samples, sample_rate = self.audio_player.load(file_path)
             self.current_file = file_path
             self.cursor_position = 0.0
+
+            # Clear previous lipsync data
+            self.lipsync_data = ""
+            self._lipsync_entries = []
+            dpg.set_value("mouth_shape_display", "")
+            dpg.set_value("mouth_shape_time", "Not processed")
 
             # Update file label
             filename = os.path.basename(file_path)
@@ -340,6 +371,7 @@ class ParakeetApp:
             self.cursor_position = position
             self._update_cursor()
         self._update_time_display(position)
+        self._update_mouth_shape_display(position)
 
     def _on_playback_finished(self):
         """Handle playback finished."""
@@ -397,6 +429,7 @@ class ParakeetApp:
 
         def on_complete(result: str):
             self.lipsync_data = result
+            self._parse_lipsync_data(result)
             dpg.set_value(self.output_text_tag, result)
             dpg.configure_item(self.process_btn_tag, enabled=True, label="Process Audio")
             dpg.configure_item("save_menu_item", enabled=True)
@@ -451,6 +484,48 @@ class ParakeetApp:
         """Handle Space shortcut for play/pause."""
         if self.current_file:
             self._on_play_pause()
+
+    def _parse_lipsync_data(self, data: str) -> None:
+        """Parse lipsync data string into list of entries."""
+        self._lipsync_entries = []
+        for line in data.strip().split('\n'):
+            if line:
+                parts = line.split()
+                if len(parts) >= 3:
+                    try:
+                        start_time = float(parts[0])
+                        duration = float(parts[1])
+                        mouth_shape = parts[2]
+                        self._lipsync_entries.append((start_time, duration, mouth_shape))
+                    except ValueError:
+                        continue
+
+    def _get_mouth_shape_at(self, position: float) -> tuple[str, float, float] | None:
+        """Get the mouth shape at a given position.
+
+        Returns: (shape, start_time, end_time) or None if no shape at position.
+        """
+        for start_time, duration, shape in self._lipsync_entries:
+            end_time = start_time + duration
+            if start_time <= position < end_time:
+                return (shape, start_time, end_time)
+        return None
+
+    def _update_mouth_shape_display(self, position: float) -> None:
+        """Update the mouth shape display widget."""
+        if not self._lipsync_entries:
+            dpg.set_value("mouth_shape_display", "")
+            dpg.set_value("mouth_shape_time", "Not processed")
+            return
+
+        result = self._get_mouth_shape_at(position)
+        if result:
+            shape, start_time, end_time = result
+            dpg.set_value("mouth_shape_display", shape)
+            dpg.set_value("mouth_shape_time", f"{start_time:.2f}s - {end_time:.2f}s")
+        else:
+            dpg.set_value("mouth_shape_display", "rest")
+            dpg.set_value("mouth_shape_time", "")
 
     def _show_about(self):
         """Show about dialog."""
