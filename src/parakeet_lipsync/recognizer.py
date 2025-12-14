@@ -1,11 +1,11 @@
 """Phoneme recognition using Allosaurus model."""
 
-import json
 import threading
-from pathlib import Path
 from typing import Callable, Optional
 
 from allosaurus.app import read_recognizer
+
+from parakeet_lipsync.models import PhonemeStep, RecognitionResult
 
 
 # IPA to Preston-Blair mouth shape mapping
@@ -38,49 +38,62 @@ class PhonemeRecognizer:
             print("Model loaded.")
 
     @staticmethod
-    def ipa_to_preston_blair(ipa_output: str) -> str:
-        """Convert IPA phonemes to Preston-Blair mouth shapes.
+    def _parse_ipa_output(ipa_output: str) -> RecognitionResult:
+        """Parse IPA output from Allosaurus and convert to RecognitionResult.
 
         Args:
             ipa_output: IPA output from allosaurus (format: "start duration phoneme" per line)
 
         Returns:
-            Converted output with Preston-Blair mouth shapes
+            RecognitionResult with Preston-Blair mouth shapes
         """
-        result_lines = []
+        result = RecognitionResult()
+
         for line in ipa_output.strip().split('\n'):
             if line:
                 parts = line.split()
                 if len(parts) >= 3:
-                    start_time, duration, ipa = parts[0], parts[1], parts[2]
-                    mouth_shape = IPA_PRESTON_BLAIR_MAP.get(ipa, "rest")
-                    result_lines.append(f"{start_time} {duration} {mouth_shape}")
-        return "\n".join(result_lines)
+                    try:
+                        start_time = float(parts[0])
+                        duration = float(parts[1])
+                        ipa = parts[2]
+                        mouth_shape = IPA_PRESTON_BLAIR_MAP.get(ipa, "rest")
 
-    def recognize(self, audio_path: str) -> str:
+                        step = PhonemeStep(
+                            start_time=start_time,
+                            duration=duration,
+                            mouth_shape=mouth_shape
+                        )
+                        result.add_step(step)
+                    except ValueError:
+                        continue
+
+        return result
+
+    def recognize(self, audio_path: str) -> RecognitionResult:
         """Synchronously recognize phonemes from audio file.
 
         Args:
             audio_path: Path to the audio file
 
         Returns:
-            Preston-Blair mouth shapes with timestamps
+            RecognitionResult containing mouth shapes with timestamps
         """
         self._load_model()
         ipa_output = self._model.recognize(audio_path, timestamp=True)
-        return self.ipa_to_preston_blair(ipa_output)
+        return self._parse_ipa_output(ipa_output)
 
     def recognize_async(
         self,
         audio_path: str,
-        on_complete: Callable[[str], None],
+        on_complete: Callable[[RecognitionResult], None],
         on_error: Optional[Callable[[Exception], None]] = None
     ) -> None:
         """Asynchronously recognize phonemes from audio file.
 
         Args:
             audio_path: Path to the audio file
-            on_complete: Callback with result string
+            on_complete: Callback with RecognitionResult
             on_error: Optional callback for errors
         """
         if self._is_processing:
@@ -106,26 +119,3 @@ class PhonemeRecognizer:
     def is_processing(self) -> bool:
         """Return True if recognition is in progress."""
         return self._is_processing
-
-
-def export_moho_timesheet(lipsync_data: str, fps: int = 24) -> str:
-    """Convert lipsync data to Moho timesheet format.
-
-    Args:
-        lipsync_data: Lipsync data (format: "start duration mouth" per line)
-        fps: Frames per second
-
-    Returns:
-        Moho timesheet formatted string
-    """
-    frames = []
-    for line in lipsync_data.strip().split('\n'):
-        if line:
-            parts = line.split()
-            if len(parts) >= 3:
-                start_time, duration, mouth = parts[0], parts[1], parts[2]
-                start_frame = int(float(start_time) * fps) + 1
-                end_frame = start_frame + int(float(duration) * fps)
-                frames.extend([f'{i} {mouth}' for i in range(start_frame, end_frame)])
-
-    return 'MohoSwitch1\n' + '\n'.join(frames)

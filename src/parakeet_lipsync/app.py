@@ -7,7 +7,8 @@ import numpy as np
 from PIL import Image
 
 from parakeet_lipsync.audio_player import AudioPlayer
-from parakeet_lipsync.recognizer import PhonemeRecognizer, export_moho_timesheet
+from parakeet_lipsync.models import RecognitionResult
+from parakeet_lipsync.recognizer import PhonemeRecognizer
 
 
 class ParakeetApp:
@@ -18,7 +19,7 @@ class ParakeetApp:
         self.recognizer = PhonemeRecognizer()
 
         self.current_file: Optional[str] = None
-        self.lipsync_data: str = ""
+        self.lipsync_result: Optional[RecognitionResult] = None
         self.fps: int = 24
 
         # Waveform data
@@ -30,9 +31,6 @@ class ParakeetApp:
         # Zoom state
         self._zoom_level: int = 1  # 1 = fit all, 2 = 2x zoom, 4 = 4x zoom, etc.
         self._view_start: float = 0.0  # Start of visible range in seconds
-
-        # Parsed lipsync data for mouth shape display
-        self._lipsync_entries: list[tuple[float, float, str]] = []  # (start, duration, shape)
 
         # Mouth shape textures
         self._mouth_textures: dict[str, int] = {}
@@ -359,8 +357,7 @@ class ParakeetApp:
             self.cursor_position = 0.0
 
             # Clear previous lipsync data
-            self.lipsync_data = ""
-            self._lipsync_entries = []
+            self.lipsync_result = None
             self._set_mouth_shape_image("rest")
             dpg.set_value("mouth_shape_name", "rest")
             dpg.set_value("mouth_shape_time", "Not processed")
@@ -602,14 +599,13 @@ class ParakeetApp:
         dpg.configure_item(self.process_btn_tag, enabled=False, label="Processing...")
         dpg.set_value(self.output_text_tag, "Processing audio... Please wait.")
 
-        def on_complete(result: str):
-            self.lipsync_data = result
-            self._parse_lipsync_data(result)
-            dpg.set_value(self.output_text_tag, result)
+        def on_complete(result: RecognitionResult):
+            self.lipsync_result = result
+            dpg.set_value(self.output_text_tag, result.to_string())
             dpg.configure_item(self.process_btn_tag, enabled=True, label="Process Audio")
             dpg.configure_item("save_menu_item", enabled=True)
             dpg.configure_item("export_menu_item", enabled=True)
-            print("Processing complete.")
+            print(f"Processing complete. Found {len(result)} phoneme steps.")
 
         def on_error(error: Exception):
             dpg.set_value(self.output_text_tag, f"Error: {error}")
@@ -620,21 +616,21 @@ class ParakeetApp:
 
     def _on_save_text(self, sender, app_data):
         """Save lipsync output as text file."""
-        if app_data and "file_path_name" in app_data:
+        if app_data and "file_path_name" in app_data and self.lipsync_result:
             file_path = app_data["file_path_name"]
             try:
                 with open(file_path, "w", encoding="utf-8") as f:
-                    f.write(self.lipsync_data)
+                    f.write(self.lipsync_result.to_string())
                 print(f"Saved to: {file_path}")
             except Exception as e:
                 print(f"Error saving file: {e}")
 
     def _on_save_moho(self, sender, app_data):
         """Export lipsync data as Moho timesheet."""
-        if app_data and "file_path_name" in app_data:
+        if app_data and "file_path_name" in app_data and self.lipsync_result:
             file_path = app_data["file_path_name"]
             try:
-                moho_data = export_moho_timesheet(self.lipsync_data, self.fps)
+                moho_data = self.lipsync_result.export_as_moho_timesheet(self.fps)
                 with open(file_path, "w", encoding="utf-8") as f:
                     f.write(moho_data)
                 print(f"Exported to: {file_path}")
@@ -652,7 +648,7 @@ class ParakeetApp:
 
     def _shortcut_save(self, sender, app_data):
         """Handle Ctrl+S shortcut."""
-        if self._is_ctrl_down() and self.lipsync_data:
+        if self._is_ctrl_down() and self.lipsync_result:
             dpg.show_item("save_text_dialog")
 
     def _shortcut_play_pause(self, sender, app_data):
@@ -675,46 +671,19 @@ class ParakeetApp:
         if self.current_file:
             self._on_zoom_fit()
 
-    def _parse_lipsync_data(self, data: str) -> None:
-        """Parse lipsync data string into list of entries."""
-        self._lipsync_entries = []
-        for line in data.strip().split('\n'):
-            if line:
-                parts = line.split()
-                if len(parts) >= 3:
-                    try:
-                        start_time = float(parts[0])
-                        duration = float(parts[1])
-                        mouth_shape = parts[2]
-                        self._lipsync_entries.append((start_time, duration, mouth_shape))
-                    except ValueError:
-                        continue
-
-    def _get_mouth_shape_at(self, position: float) -> tuple[str, float, float] | None:
-        """Get the mouth shape at a given position.
-
-        Returns: (shape, start_time, end_time) or None if no shape at position.
-        """
-        for start_time, duration, shape in self._lipsync_entries:
-            end_time = start_time + duration
-            if start_time <= position < end_time:
-                return (shape, start_time, end_time)
-        return None
-
     def _update_mouth_shape_display(self, position: float) -> None:
         """Update the mouth shape display widget."""
-        if not self._lipsync_entries:
+        if not self.lipsync_result or self.lipsync_result.is_empty:
             self._set_mouth_shape_image("rest")
             dpg.set_value("mouth_shape_name", "rest")
             dpg.set_value("mouth_shape_time", "Not processed")
             return
 
-        result = self._get_mouth_shape_at(position)
-        if result:
-            shape, start_time, end_time = result
-            self._set_mouth_shape_image(shape)
-            dpg.set_value("mouth_shape_name", shape)
-            dpg.set_value("mouth_shape_time", f"{start_time:.2f}s - {end_time:.2f}s")
+        step = self.lipsync_result.get_shape_at(position)
+        if step:
+            self._set_mouth_shape_image(step.mouth_shape)
+            dpg.set_value("mouth_shape_name", step.mouth_shape)
+            dpg.set_value("mouth_shape_time", f"{step.start_time:.2f}s - {step.end_time:.2f}s")
         else:
             self._set_mouth_shape_image("rest")
             dpg.set_value("mouth_shape_name", "rest")
